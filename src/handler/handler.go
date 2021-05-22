@@ -1,8 +1,9 @@
 package handler
 
 import (
-	"fmt"
 	"framework/api"
+	"framework/api/model"
+	"framework/db"
 	"framework/logger"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -17,6 +18,11 @@ func Auth(c *gin.Context) {
 		return
 	}
 	user, err := api.CheckToken(json["token"].(string))
+	if db.IsNotExistError(err) {
+		// token expired
+		c.JSON(http.StatusOK, api.TokenInvaildResp)
+		return
+	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(user))
 }
 
@@ -28,7 +34,15 @@ func LoadInitData(c *gin.Context) {
 		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	fmt.Println(json)
 	uid := json["user_id"].(string)
-	c.JSON(http.StatusOK, api.NewSuccessResponse(fmt.Sprintf("This is a init data for %v", uid)))
+	user := model.GetUserByUID(uid)
+	c.JSON(http.StatusOK, api.NewSuccessResponse(struct {
+		User    *model.User     `json:"user_info"`
+		Friends []*model.Friend `json:"friends_list"`
+		Rooms   []*model.Room   `json:"room_list"`
+	}{
+		user,
+		nil,
+		nil,
+	}))
 }
