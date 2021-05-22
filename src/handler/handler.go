@@ -35,7 +35,17 @@ func LoadInitData(c *gin.Context) {
 		return
 	}
 	uid := json["user_id"].(string)
-	user := model.GetUserByUID(uid)
+	// get user info
+	user, err := model.GetUserByUID(uid)
+	if nil != err {
+		if db.IsNoDocumentError(err) {
+			c.JSON(http.StatusOK, api.ResourceNotFoundResp)
+			return
+		}
+		logger.Error("Logic.LoadInitData get Userinfo err: %v", err)
+		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(struct {
 		User    *model.User     `json:"user_info"`
 		Friends []*model.Friend `json:"friends_list"`
