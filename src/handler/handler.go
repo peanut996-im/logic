@@ -45,14 +45,26 @@ func Load(c *gin.Context) {
 		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
+	friends,err := model.GetAllFriends(lR.UID)
+	if err!=nil{
+		logger.Error("Logic.Load "+api.MongoDBError, err)
+		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	rooms,err := model.GetRoomsByUID(lR.UID)
+	if err!=nil{
+		logger.Error("Logic.Load "+api.MongoDBError, err)
+		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(struct {
 		User    *model.User     `json:"userInfo"`
-		Friends []*model.Friend `json:"friendList"`
-		Rooms   []*model.Room   `json:"roomList"`
+		Friends []string `json:"friendList"`
+		Rooms   []string  `json:"roomList"`
 	}{
 		user,
-		nil,
-		nil,
+		friends,
+		rooms,
 	}))
 }
 
