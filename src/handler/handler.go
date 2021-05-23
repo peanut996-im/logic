@@ -110,7 +110,7 @@ func CreateGroup(c *gin.Context) {
 		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	err = model.CreateGroup(gR.GroupName, gR.GroupID)
+	err = model.CreateGroup(gR.GroupName, gR.GroupAdmin)
 	if err != nil {
 		logger.Error(api.MongoDBError, err)
 		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))

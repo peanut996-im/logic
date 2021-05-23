@@ -4,6 +4,7 @@ import (
 	"framework/cfgargs"
 	"framework/db"
 	"framework/logger"
+	"github.com/gin-gonic/gin"
 	"logic/server"
 	"sync"
 )
@@ -35,6 +36,7 @@ func (a *App) Init(cfg *cfgargs.SrvConfig) {
 		return
 	}
 
+	gin.DefaultWriter = logger.MultiWriter(logger.DefLogger().GetLogWriters()...)
 	a.srv = server.NewServer()
 	a.srv.Init(cfg)
 
