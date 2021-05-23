@@ -9,105 +9,6 @@ import (
 	"net/http"
 )
 
-// refactor
-//func EventHandler(event string) func(c *gin.Context){
-//	return func(c *gin.Context){
-//		var (
-//			data interface{}
-//			err error
-//		)
-//		switch event {
-//		case api.EventAuth:
-//			data = &api.AuthRequest{}
-//		case api.EventLoad:
-//			data = &api.LoadRequest{}
-//		case api.EventAddFriend,api.EventDeleteFriend:
-//			data = &api.FriendRequest{}
-//		case api.EventCreateGroup, api.EventJoinGroup,api.EventLeaveGroup:
-//			data = &api.GroupRequest{}
-//		default:
-//			c.JSON(http.StatusNotFound,nil)
-//			return
-//		}
-//		err = c.BindJSON(data)
-//		if err != nil {
-//			logger.Error(fmt.Sprintf("Logic.Handler %v ",event)+api.UnmarshalJsonError,err)
-//			c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//			return
-//		}
-//		switch event {
-//		case api.EventAuth:
-//			user, err := api.CheckToken(data.(*api.AuthRequest).Token)
-//			if db.IsNotExistError(err) {
-//				// token expired
-//				c.JSON(http.StatusOK, api.TokenInvaildResp)
-//				return
-//			}
-//			c.JSON(http.StatusOK, api.NewSuccessResponse(user))
-//			return
-//		case api.EventLoad:
-//			user, err := model.GetUserByUID(data.(*api.LoadRequest).UID)
-//			if nil != err {
-//				if db.IsNoDocumentError(err) {
-//					c.JSON(http.StatusOK, api.ResourceNotFoundResp)
-//					return
-//				}
-//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//				return
-//			}
-//			c.JSON(http.StatusOK, api.NewSuccessResponse(struct {
-//				User    *model.User     `json:"userInfo"`
-//				Friends []*model.Friend `json:"friendList"`
-//				Rooms   []*model.Room   `json:"roomList"`
-//			}{
-//				user,
-//				nil,
-//				nil,
-//			}))
-//			return
-//		case api.EventAddFriend:
-//			err = model.AddNewFriend(data.(*api.FriendRequest).FriendA, data.(*api.FriendRequest).FriendB)
-//			if err != nil {
-//				logger.Error(api.MongoDBError,err)
-//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//				return
-//			}
-//		case api.EventDeleteFriend:
-//			err = model.DeleteFriend(data.(*api.FriendRequest).FriendA, data.(*api.FriendRequest).FriendB)
-//			if err != nil {
-//				logger.Error(api.MongoDBError,err)
-//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//				return
-//			}
-//		case api.EventCreateGroup:
-//			err = model.CreateGroup(data.(*api.GroupRequest).GroupName, data.(*api.GroupRequest).GroupID)
-//			if err != nil {
-//				logger.Error(api.MongoDBError,err)
-//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//				return
-//			}
-//		case api.EventJoinGroup:
-//			err = model.CreateGroupUser(data.(*api.GroupRequest).GroupID,data.(*api.GroupRequest).UID)
-//			if err != nil {
-//				logger.Error(api.MongoDBError,err)
-//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//				return
-//			}
-//		case api.EventLeaveGroup:
-//			err = model.DeleteGroupUser(data.(*api.GroupRequest).GroupID,data.(*api.GroupRequest).UID)
-//			if err != nil {
-//				logger.Error(api.MongoDBError,err)
-//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//				return
-//			}
-//		default:
-//			c.JSON(http.StatusNotFound,nil)
-//			return
-//		}
-//		c.JSON(http.StatusOK,api.NewSuccessResponse(nil))
-//	}
-//}
-
 func Auth(c *gin.Context) {
 	aR := &api.AuthRequest{}
 	err := c.BindJSON(aR)
@@ -239,3 +140,102 @@ func LeaveGroup(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
 }
+
+// refactor
+//func EventHandler(event string) func(c *gin.Context){
+//	return func(c *gin.Context){
+//		var (
+//			data interface{}
+//			err error
+//		)
+//		switch event {
+//		case api.EventAuth:
+//			data = &api.AuthRequest{}
+//		case api.EventLoad:
+//			data = &api.LoadRequest{}
+//		case api.EventAddFriend,api.EventDeleteFriend:
+//			data = &api.FriendRequest{}
+//		case api.EventCreateGroup, api.EventJoinGroup,api.EventLeaveGroup:
+//			data = &api.GroupRequest{}
+//		default:
+//			c.JSON(http.StatusNotFound,nil)
+//			return
+//		}
+//		err = c.BindJSON(data)
+//		if err != nil {
+//			logger.Error(fmt.Sprintf("Logic.Handler %v ",event)+api.UnmarshalJsonError,err)
+//			c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+//			return
+//		}
+//		switch event {
+//		case api.EventAuth:
+//			user, err := api.CheckToken(data.(*api.AuthRequest).Token)
+//			if db.IsNotExistError(err) {
+//				// token expired
+//				c.JSON(http.StatusOK, api.TokenInvaildResp)
+//				return
+//			}
+//			c.JSON(http.StatusOK, api.NewSuccessResponse(user))
+//			return
+//		case api.EventLoad:
+//			user, err := model.GetUserByUID(data.(*api.LoadRequest).UID)
+//			if nil != err {
+//				if db.IsNoDocumentError(err) {
+//					c.JSON(http.StatusOK, api.ResourceNotFoundResp)
+//					return
+//				}
+//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+//				return
+//			}
+//			c.JSON(http.StatusOK, api.NewSuccessResponse(struct {
+//				User    *model.User     `json:"userInfo"`
+//				Friends []*model.Friend `json:"friendList"`
+//				Rooms   []*model.Room   `json:"roomList"`
+//			}{
+//				user,
+//				nil,
+//				nil,
+//			}))
+//			return
+//		case api.EventAddFriend:
+//			err = model.AddNewFriend(data.(*api.FriendRequest).FriendA, data.(*api.FriendRequest).FriendB)
+//			if err != nil {
+//				logger.Error(api.MongoDBError,err)
+//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+//				return
+//			}
+//		case api.EventDeleteFriend:
+//			err = model.DeleteFriend(data.(*api.FriendRequest).FriendA, data.(*api.FriendRequest).FriendB)
+//			if err != nil {
+//				logger.Error(api.MongoDBError,err)
+//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+//				return
+//			}
+//		case api.EventCreateGroup:
+//			err = model.CreateGroup(data.(*api.GroupRequest).GroupName, data.(*api.GroupRequest).GroupID)
+//			if err != nil {
+//				logger.Error(api.MongoDBError,err)
+//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+//				return
+//			}
+//		case api.EventJoinGroup:
+//			err = model.CreateGroupUser(data.(*api.GroupRequest).GroupID,data.(*api.GroupRequest).UID)
+//			if err != nil {
+//				logger.Error(api.MongoDBError,err)
+//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+//				return
+//			}
+//		case api.EventLeaveGroup:
+//			err = model.DeleteGroupUser(data.(*api.GroupRequest).GroupID,data.(*api.GroupRequest).UID)
+//			if err != nil {
+//				logger.Error(api.MongoDBError,err)
+//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+//				return
+//			}
+//		default:
+//			c.JSON(http.StatusNotFound,nil)
+//			return
+//		}
+//		c.JSON(http.StatusOK,api.NewSuccessResponse(nil))
+//	}
+//}
