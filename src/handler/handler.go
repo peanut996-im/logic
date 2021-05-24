@@ -9,18 +9,36 @@ import (
 	"net/http"
 )
 
-func Auth(c *gin.Context) {
-	aR := &api.AuthRequest{}
-	err := c.BindJSON(aR)
+func Chat(c *gin.Context) {
+	cR := &api.ChatRequest{}
+	err := c.BindJSON(cR)
 	if err != nil {
 		logger.Error("Logic.Auth "+api.UnmarshalJsonError, err)
 		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
+	msg := model.ChatMessageFrom(cR.From, cR.To, cR.Content.(string), cR.Type)
+	if err := model.InsertChatMessage(msg); err != nil {
+		logger.Error("Logic.Chat "+api.UnmarshalJsonError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	logger.Debug("Logic.Chat get client addr: %v", c.ClientIP())
+	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
+}
+
+func Auth(c *gin.Context) {
+	aR := &api.AuthRequest{}
+	err := c.BindJSON(aR)
+	if err != nil {
+		logger.Error("Logic.Auth "+api.UnmarshalJsonError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
 	user, err := api.CheckToken(aR.Token)
 	if db.IsNotExistError(err) {
 		// token expired
-		c.JSON(http.StatusOK, api.TokenInvaildResp)
+		c.AbortWithStatusJSON(http.StatusOK, api.TokenInvaildResp)
 		return
 	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(user))
@@ -31,36 +49,36 @@ func Load(c *gin.Context) {
 	err := c.BindJSON(lR)
 	if err != nil {
 		logger.Error(api.UnmarshalJsonError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
 	// get user info
 	user, err := model.GetUserByUID(lR.UID)
 	if nil != err {
 		if db.IsNoDocumentError(err) {
-			c.JSON(http.StatusOK, api.ResourceNotFoundResp)
+			c.AbortWithStatusJSON(http.StatusOK, api.ResourceNotFoundResp)
 			return
 		}
 		logger.Error("Logic.Load "+api.MongoDBError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	friends,err := model.GetAllFriends(lR.UID)
-	if err!=nil{
+	friends, err := model.GetAllFriends(lR.UID)
+	if err != nil {
 		logger.Error("Logic.Load "+api.MongoDBError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	rooms,err := model.GetRoomsByUID(lR.UID)
-	if err!=nil{
+	rooms, err := model.GetRoomsByUID(lR.UID)
+	if err != nil {
 		logger.Error("Logic.Load "+api.MongoDBError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(struct {
-		User    *model.User     `json:"userInfo"`
-		Friends []string `json:"friendList"`
-		Rooms   []string  `json:"roomList"`
+		User    *model.User `json:"userInfo"`
+		Friends []string    `json:"friendList"`
+		Rooms   []string    `json:"roomList"`
 	}{
 		user,
 		friends,
@@ -73,13 +91,13 @@ func AddFriend(c *gin.Context) {
 	err := c.BindJSON(fR)
 	if err != nil {
 		logger.Error(api.UnmarshalJsonError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
 	err = model.AddNewFriend(fR.FriendA, fR.FriendB)
 	if err != nil {
 		logger.Error(api.MongoDBError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
@@ -90,13 +108,13 @@ func DeleteFriend(c *gin.Context) {
 	err := c.BindJSON(fR)
 	if err != nil {
 		logger.Error(api.UnmarshalJsonError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
 	err = model.DeleteFriend(fR.FriendA, fR.FriendB)
 	if err != nil {
 		logger.Error(api.MongoDBError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
@@ -107,13 +125,13 @@ func CreateGroup(c *gin.Context) {
 	err := c.BindJSON(gR)
 	if err != nil {
 		logger.Error(api.UnmarshalJsonError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
 	err = model.CreateGroup(gR.GroupName, gR.GroupAdmin)
 	if err != nil {
 		logger.Error(api.MongoDBError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
@@ -124,13 +142,13 @@ func JoinGroup(c *gin.Context) {
 	err := c.BindJSON(gR)
 	if err != nil {
 		logger.Error(api.UnmarshalJsonError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
 	err = model.CreateGroupUser(gR.GroupID, gR.UID)
 	if err != nil {
 		logger.Error(api.MongoDBError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
@@ -141,13 +159,13 @@ func LeaveGroup(c *gin.Context) {
 	err := c.BindJSON(gR)
 	if err != nil {
 		logger.Error(api.UnmarshalJsonError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
 	err = model.DeleteGroupUser(gR.GroupID, gR.UID)
 	if err != nil {
 		logger.Error(api.MongoDBError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
