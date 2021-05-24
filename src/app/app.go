@@ -9,7 +9,6 @@ import (
 	"sync"
 )
 
-
 var (
 	once sync.Once
 	app  *App
@@ -29,6 +28,7 @@ func GetApp() *App {
 }
 
 func (a *App) Init(cfg *cfgargs.SrvConfig) {
+	gin.DefaultWriter = logger.MultiWriter(logger.DefLogger().GetLogWriters()...)
 	db.InitRedisClient(cfg)
 	err := db.InitMongoClient(cfg)
 	if err != nil {
@@ -36,8 +36,7 @@ func (a *App) Init(cfg *cfgargs.SrvConfig) {
 		return
 	}
 
-	gin.DefaultWriter = logger.MultiWriter(logger.DefLogger().GetLogWriters()...)
 	a.srv = server.NewServer()
 	a.srv.Init(cfg)
-
+	a.srv.Run()
 }

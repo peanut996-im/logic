@@ -1,6 +1,7 @@
-package handler
+package server
 
 import (
+	"fmt"
 	"framework/api"
 	"framework/api/model"
 	"framework/db"
@@ -9,25 +10,99 @@ import (
 	"net/http"
 )
 
-func Chat(c *gin.Context) {
+func (s *Server) Chat(c *gin.Context) {
 	cR := &api.ChatRequest{}
 	err := c.BindJSON(cR)
 	if err != nil {
 		logger.Error("Logic.Auth "+api.UnmarshalJsonError, err)
-		c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-		return
-	}
-	msg := model.ChatMessageFrom(cR.From, cR.To, cR.Content.(string), cR.Type)
-	if err := model.InsertChatMessage(msg); err != nil {
-		logger.Error("Logic.Chat "+api.UnmarshalJsonError, err)
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	logger.Debug("Logic.Chat get client addr: %v", c.ClientIP())
+	msg := model.ChatMessageFrom(cR.From, cR.To, cR.Content.(string), cR.Type)
+	// TODO replace for MQ
+	go model.InsertChatMessage(msg)
+	go s.PushChatMessage(msg)
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
 }
 
-func Auth(c *gin.Context) {
+func (s *Server) PushChatMessage(message *model.ChatMessage) {
+	ch := make(chan int, 0)
+	defer close(ch)
+	pCR := &api.PushChatRequest{
+		Message: message,
+	}
+	roomID := message.To
+	room, err := model.GetRoomByID(roomID)
+	if err != nil {
+		logger.Error("Logic.PushChat no such room: %v", roomID)
+		return
+	}
+	targets := []string{}
+	if room.OneToOne {
+		logger.Debug("Logic.Chat Push Friend Message")
+		//single
+		targets, err = model.GetFriendsByRoomID(room.RoomID)
+		if err != nil {
+			return
+		}
+
+	} else {
+		//group
+		targets, err = model.GetUsersByGroupID(message.To)
+		if err != nil {
+			logger.Error("Logic.PushChat Get Group Users err: %v", err)
+			return
+		}
+	}
+	for _, target := range targets {
+		pCR.Target = target
+		go s.SendToTarget(ch, target, pCR)
+		<-ch
+	}
+}
+
+func (s *Server) SendToTarget(ch chan int, target string, request *api.PushChatRequest) {
+	logger.Debug("Logic.SendToTarget target: %v", target)
+	url, err := s.GetChatUrlFromScene(target)
+	if err != nil {
+		logger.Error("Logic.PushChat GetGateUrl err: %v", err)
+		return
+	}
+	go s.httpClient.GetGoReq().Post(url).Send(request).End()
+	ch <- 1
+}
+
+func (s *Server) GetGateAddrFromScene(scene string) (string, error) {
+	//TODO for cluster fix get from server
+	return fmt.Sprintf("%v:%v", s.cfg.Gate.Host, s.cfg.Gate.Port), nil
+}
+
+func (s *Server) GetChatUrlFromScene(scene string) (string, error) {
+	addr, err := s.GetGateAddrFromScene(scene)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("http://%v/%v", addr, api.EventChat), nil
+}
+
+func (s *Server) GetUserInfo(c *gin.Context) {
+	uR := &api.UserRequest{}
+	err := c.BindJSON(uR)
+	if err != nil {
+		logger.Error("Logic.Auth "+api.UnmarshalJsonError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	user, err := model.GetUserByUID(uR.UID)
+	if err != nil {
+		logger.Error("Logic.GetUserInfo "+api.MongoDBError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	c.JSON(http.StatusOK, api.NewSuccessResponse(user))
+}
+
+func (s *Server) Auth(c *gin.Context) {
 	aR := &api.AuthRequest{}
 	err := c.BindJSON(aR)
 	if err != nil {
@@ -44,7 +119,7 @@ func Auth(c *gin.Context) {
 	c.JSON(http.StatusOK, api.NewSuccessResponse(user))
 }
 
-func Load(c *gin.Context) {
+func (s *Server) Load(c *gin.Context) {
 	lR := &api.LoadRequest{}
 	err := c.BindJSON(lR)
 	if err != nil {
@@ -86,7 +161,7 @@ func Load(c *gin.Context) {
 	}))
 }
 
-func AddFriend(c *gin.Context) {
+func (s *Server) AddFriend(c *gin.Context) {
 	fR := &api.FriendRequest{}
 	err := c.BindJSON(fR)
 	if err != nil {
@@ -103,7 +178,7 @@ func AddFriend(c *gin.Context) {
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
 }
 
-func DeleteFriend(c *gin.Context) {
+func (s *Server) DeleteFriend(c *gin.Context) {
 	fR := &api.FriendRequest{}
 	err := c.BindJSON(fR)
 	if err != nil {
@@ -120,7 +195,7 @@ func DeleteFriend(c *gin.Context) {
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
 }
 
-func CreateGroup(c *gin.Context) {
+func (s *Server) CreateGroup(c *gin.Context) {
 	gR := &api.GroupRequest{}
 	err := c.BindJSON(gR)
 	if err != nil {
@@ -137,7 +212,7 @@ func CreateGroup(c *gin.Context) {
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
 }
 
-func JoinGroup(c *gin.Context) {
+func (s *Server) JoinGroup(c *gin.Context) {
 	gR := &api.GroupRequest{}
 	err := c.BindJSON(gR)
 	if err != nil {
@@ -154,7 +229,7 @@ func JoinGroup(c *gin.Context) {
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
 }
 
-func LeaveGroup(c *gin.Context) {
+func (s *Server) LeaveGroup(c *gin.Context) {
 	gR := &api.GroupRequest{}
 	err := c.BindJSON(gR)
 	if err != nil {
@@ -172,8 +247,8 @@ func LeaveGroup(c *gin.Context) {
 }
 
 // refactor
-//func EventHandler(event string) func(c *gin.Context){
-//	return func(c *gin.Context){
+//func(s *Server)  EventHandler(event string) func(s *Server) (c *gin.Context){
+//	return func(s *Server) (c *gin.Context){
 //		var (
 //			data interface{}
 //			err error

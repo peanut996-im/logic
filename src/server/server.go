@@ -6,11 +6,12 @@ import (
 	"framework/logger"
 	"framework/net/http"
 	"github.com/gin-gonic/gin"
-	"logic/handler"
 )
 
 type Server struct {
-	httpSrv *http.Server
+	cfg        *cfgargs.SrvConfig
+	httpSrv    *http.Server
+	httpClient *http.Client
 }
 
 func NewServer() *Server {
@@ -19,24 +20,29 @@ func NewServer() *Server {
 
 func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 	gin.DefaultWriter = logger.MultiWriter(logger.DefLogger().GetLogWriters()...)
-	s.httpSrv = http.NewServer(cfg)
+	s.cfg = cfg
+	s.httpClient = http.NewClient()
+	s.httpSrv = http.NewServer()
+	s.httpSrv.Init(cfg)
 	s.MountRoute()
-	go s.httpSrv.Serve(cfg) //nolint: errcheck
+}
+func (s *Server) Run() {
+	go s.httpSrv.Run()
 }
 
 func (s *Server) MountRoute() {
 	path := ""
 	routers := []*http.Route{
 		// TODO: Mount routes
-		http.NewRoute(api.HTTPMethodPost, api.EventAuth, handler.Auth),
-		//http.NewRoute(api.HTTPMethodPost, api.EventAuth, handler.EventHandler(api.EventAuth)),
-		http.NewRoute(api.HTTPMethodPost, api.EventLoad, handler.Load),
-		//http.NewRoute(api.HTTPMethodPost, api.EventLoad, handler.EventHandler(api.EventLoad)),
-		http.NewRoute(api.HTTPMethodPost, api.EventAddFriend, handler.AddFriend),
-		http.NewRoute(api.HTTPMethodPost, api.EventDeleteFriend, handler.DeleteFriend),
-		http.NewRoute(api.HTTPMethodPost, api.EventCreateGroup, handler.CreateGroup),
-		http.NewRoute(api.HTTPMethodPost, api.EventJoinGroup, handler.JoinGroup),
-		http.NewRoute(api.HTTPMethodPost, api.EventLeaveGroup, handler.LeaveGroup),
+		http.NewRoute(api.HTTPMethodPost, api.EventChat, s.Chat),
+		http.NewRoute(api.HTTPMethodPost, api.EventAuth, s.Auth),
+		http.NewRoute(api.HTTPMethodPost, api.EventLoad, s.Load),
+		http.NewRoute(api.HTTPMethodPost, api.EventAddFriend, s.AddFriend),
+		http.NewRoute(api.HTTPMethodPost, api.EventDeleteFriend, s.DeleteFriend),
+		http.NewRoute(api.HTTPMethodPost, api.EventCreateGroup, s.CreateGroup),
+		http.NewRoute(api.HTTPMethodPost, api.EventJoinGroup, s.JoinGroup),
+		http.NewRoute(api.HTTPMethodPost, api.EventLeaveGroup, s.LeaveGroup),
+		http.NewRoute(api.HTTPMethodPost, api.EventGetUserInfo, s.GetUserInfo),
 	}
 	node := http.NewNodeRoute(path, routers...)
 	s.httpSrv.AddNodeRoute(node)
