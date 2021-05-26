@@ -26,7 +26,7 @@ func (s *Server) Chat(c *gin.Context) {
 }
 
 func (s *Server) PushChatMessage(message *model.ChatMessage) {
-	ch := make(chan int, 0)
+	ch := make(chan struct{}, 0)
 	defer close(ch)
 	pCR := &api.PushChatRequest{
 		Message: message,
@@ -61,7 +61,7 @@ func (s *Server) PushChatMessage(message *model.ChatMessage) {
 	}
 }
 
-func (s *Server) SendToTarget(ch chan int, target string, request *api.PushChatRequest) {
+func (s *Server) SendToTarget(ch chan struct{}, target string, request *api.PushChatRequest) {
 	logger.Debug("Logic.SendToTarget target: %v", target)
 	url, err := s.GetChatUrlFromScene(target)
 	if err != nil {
@@ -69,7 +69,7 @@ func (s *Server) SendToTarget(ch chan int, target string, request *api.PushChatR
 		return
 	}
 	go s.httpClient.GetGoReq().Post(url).Send(request).End()
-	ch <- 1
+	ch <- struct{}{}
 }
 
 func (s *Server) GetGateAddrFromScene(scene string) (string, error) {
