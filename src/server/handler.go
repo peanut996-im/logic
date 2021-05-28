@@ -48,7 +48,7 @@ func (s *Server) PushChatMessage(message *model.ChatMessage) {
 
 	} else {
 		//group
-		targets, err = model.GetUsersByGroupID(message.To)
+		targets, err = model.GetUserIDsByGroupID(message.To)
 		if err != nil {
 			logger.Error("Logic.PushChat Get Group Users err: %v", err)
 			return
@@ -138,26 +138,36 @@ func (s *Server) Load(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	friends, err := model.GetAllFriends(lR.UID)
+	// friends
+	friends, err := model.GetFriendWithRoomIDsByUID(user.UID)
 	if err != nil {
 		logger.Error("Logic.Load "+api.MongoDBError, err)
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
+	// rooms
 	rooms, err := model.GetRoomsByUID(lR.UID)
 	if err != nil {
 		logger.Error("Logic.Load "+api.MongoDBError, err)
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
+	groups, err := model.GetGroupsByUID(lR.UID)
+	if err != nil {
+		logger.Error("Logic.Load "+api.MongoDBError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(struct {
-		User    *model.User `json:"userInfo"`
-		Friends []string    `json:"friendList"`
-		Rooms   []string    `json:"roomList"`
+		User    *model.User               `json:"user"`
+		Friends []*model.FriendWithRoomID `json:"friends"`
+		Rooms   []*model.Room             `json:"rooms"`
+		Groups  []*model.Group            `json:"groups"`
 	}{
 		user,
 		friends,
 		rooms,
+		groups,
 	}))
 }
 
