@@ -8,6 +8,8 @@ import (
 	"framework/logger"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"sync"
+	"time"
 )
 
 func (s *Server) Chat(c *gin.Context) {
@@ -127,47 +129,115 @@ func (s *Server) Load(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
+	var wg sync.WaitGroup
+	// 防止waitgroup.wait()最先执行
+	wg.Add(1)
+	uCh, fCh, rCh := make(chan *model.User, 0), make(chan []*model.FriendWithRoomID, 0), make(chan []*model.Room, 0)
+	gCh, gUCh := make(chan []*model.Group, 0), make(chan []*model.User, 0)
+	done := make(chan struct{})
+	defer close(uCh)
+	defer close(fCh)
+	defer close(rCh)
+	defer close(gCh)
+	defer close(gUCh)
 	// get user info
-	user, err := model.GetUserByUID(lR.UID)
-	if nil != err {
-		if db.IsNoDocumentError(err) {
-			c.AbortWithStatusJSON(http.StatusOK, api.ResourceNotFoundResp)
+	go func() {
+		wg.Add(1)
+		defer wg.Done()
+		user, err := model.GetUserByUID(lR.UID)
+		if nil != err {
+			uCh <- nil
 			return
 		}
+		uCh <- user
+	}()
+
+	go func() {
+		// friends
+		wg.Add(1)
+		defer wg.Done()
+		friends, err := model.GetFriendWithRoomIDsByUID(lR.UID)
+		if err != nil {
+			fCh <- nil
+			return
+		}
+		fCh <- friends
+	}()
+
+	go func() {
+		// rooms
+		wg.Add(1)
+		defer wg.Done()
+		rooms, err := model.GetRoomsByUID(lR.UID)
+		if err != nil {
+			rCh <- nil
+			return
+		}
+		rCh <- rooms
+	}()
+
+	go func() {
+		// rooms
+		wg.Add(1)
+		defer wg.Done()
+		groups, err := model.GetGroupsByUID(lR.UID)
+		if err != nil {
+			gCh <- nil
+			gUCh <- nil
+			return
+		}
+		gCh <- groups
+		groupUsers, err := model.GetUsersByGroups(groups...)
+		if nil != err {
+			gUCh <- nil
+			return
+		}
+		gUCh <- groupUsers
+		// Done 抵消一开始的add(1) 保证这里的执行完毕
+		wg.Done()
+	}()
+	go func() {
+		wg.Wait()
+		done <- struct{}{}
+	}()
+	user, friends, rooms, groups, groupUsers := &model.User{}, []*model.FriendWithRoomID{}, []*model.Room{}, []*model.Group{}, []*model.User{}
+Loop:
+	for {
+		select {
+		case <-done:
+			break Loop
+		case u := <-uCh:
+			user = u
+		case f := <-fCh:
+			friends = f
+		case r := <-rCh:
+			rooms = r
+		case g := <-gCh:
+			groups = g
+		case gU := <-gUCh:
+			groupUsers = gU
+		case <-time.After(1 * time.Second):
+			break Loop
+		}
+	}
+	if user == nil || friends == nil || rooms == nil || groups == nil || groupUsers == nil {
 		logger.Error("Logic.Load "+api.MongoDBError, err)
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	// friends
-	friends, err := model.GetFriendWithRoomIDsByUID(user.UID)
-	if err != nil {
-		logger.Error("Logic.Load "+api.MongoDBError, err)
-		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-		return
-	}
-	// rooms
-	rooms, err := model.GetRoomsByUID(lR.UID)
-	if err != nil {
-		logger.Error("Logic.Load "+api.MongoDBError, err)
-		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-		return
-	}
-	groups, err := model.GetGroupsByUID(lR.UID)
-	if err != nil {
-		logger.Error("Logic.Load "+api.MongoDBError, err)
-		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-		return
-	}
+
 	c.JSON(http.StatusOK, api.NewSuccessResponse(struct {
-		User    *model.User               `json:"user"`
-		Friends []*model.FriendWithRoomID `json:"friends"`
-		Rooms   []*model.Room             `json:"rooms"`
-		Groups  []*model.Group            `json:"groups"`
+		User       *model.User               `json:"user"`
+		Friends    []*model.FriendWithRoomID `json:"friends"`
+		Rooms      []*model.Room             `json:"rooms"`
+		Groups     []*model.Group            `json:"groups"`
+		GroupUsers []*model.User             `json:"groupUsers"`
 	}{
 		user,
 		friends,
 		rooms,
 		groups,
+		groupUsers,
 	}))
 }
 
