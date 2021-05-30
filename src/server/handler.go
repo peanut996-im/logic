@@ -206,7 +206,13 @@ func (s *Server) AddFriend(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
+	friendData, err := model.GetFriendDataByIDs(fR.FriendA, fR.FriendB)
+	if err != nil {
+		logger.Error(api.MongoDBError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	c.JSON(http.StatusOK, api.NewSuccessResponse(friendData))
 }
 
 func (s *Server) DeleteFriend(c *gin.Context) {
@@ -264,7 +270,13 @@ func (s *Server) JoinGroup(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
+	groupData, err := model.GetGroupDataByGroupID(gR.GroupID)
+	if err != nil {
+		logger.Error(api.MongoDBError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	c.JSON(http.StatusOK, api.NewSuccessResponse(groupData))
 }
 
 func (s *Server) LeaveGroup(c *gin.Context) {
