@@ -132,14 +132,15 @@ func (s *Server) Load(c *gin.Context) {
 	var wg sync.WaitGroup
 	// 防止waitgroup.wait()最先执行
 	wg.Add(1)
-	uCh, fCh, rCh := make(chan *model.User, 0), make(chan []*model.FriendWithRoomID, 0), make(chan []*model.Room, 0)
-	gCh, gUCh := make(chan []*model.Group, 0), make(chan []*model.User, 0)
+	uCh, fCh, rCh := make(chan *model.User, 0), make(chan []*model.FriendData, 0), make(chan []*model.Room, 0)
+	//gCh, gUCh := make(chan []*model.GroupData, 0), make(chan []*model.User, 0)
+	gCh := make(chan []*model.GroupData, 0)
 	done := make(chan struct{})
 	defer close(uCh)
 	defer close(fCh)
 	defer close(rCh)
 	defer close(gCh)
-	defer close(gUCh)
+	//defer close(gUCh)
 	// get user info
 	go func() {
 		wg.Add(1)
@@ -156,7 +157,7 @@ func (s *Server) Load(c *gin.Context) {
 		// friends
 		wg.Add(1)
 		defer wg.Done()
-		friends, err := model.GetFriendWithRoomIDsByUID(lR.UID)
+		friends, err := model.GetFriendDatasByUID(lR.UID)
 		if err != nil {
 			fCh <- nil
 			return
@@ -180,19 +181,19 @@ func (s *Server) Load(c *gin.Context) {
 		// rooms
 		wg.Add(1)
 		defer wg.Done()
-		groups, err := model.GetGroupsByUID(lR.UID)
+		groups, err := model.GetGroupDatasByUID(lR.UID)
 		if err != nil {
 			gCh <- nil
-			gUCh <- nil
+			//gUCh <- nil
 			return
 		}
 		gCh <- groups
-		groupUsers, err := model.GetUsersByGroups(groups...)
-		if nil != err {
-			gUCh <- nil
-			return
-		}
-		gUCh <- groupUsers
+		//groupUsers, err := model.GetUsersByGroups(groups...)
+		//if nil != err {
+		//	gUCh <- nil
+		//	return
+		//}
+		//gUCh <- groupUsers
 		// Done 抵消一开始的add(1) 保证这里的执行完毕
 		wg.Done()
 	}()
@@ -200,7 +201,7 @@ func (s *Server) Load(c *gin.Context) {
 		wg.Wait()
 		done <- struct{}{}
 	}()
-	user, friends, rooms, groups, groupUsers := &model.User{}, []*model.FriendWithRoomID{}, []*model.Room{}, []*model.Group{}, []*model.User{}
+	user, friends, rooms, groups, groupUsers := &model.User{}, []*model.FriendData{}, []*model.Room{}, []*model.GroupData{}, []*model.User{}
 Loop:
 	for {
 		select {
@@ -214,8 +215,8 @@ Loop:
 			rooms = r
 		case g := <-gCh:
 			groups = g
-		case gU := <-gUCh:
-			groupUsers = gU
+		//case gU := <-gUCh:
+		//	groupUsers = gU
 		case <-time.After(1 * time.Second):
 			break Loop
 		}
@@ -227,17 +228,17 @@ Loop:
 	}
 
 	c.JSON(http.StatusOK, api.NewSuccessResponse(struct {
-		User       *model.User               `json:"user"`
-		Friends    []*model.FriendWithRoomID `json:"friends"`
-		Rooms      []*model.Room             `json:"rooms"`
-		Groups     []*model.Group            `json:"groups"`
-		GroupUsers []*model.User             `json:"groupUsers"`
+		User    *model.User         `json:"user"`
+		Friends []*model.FriendData `json:"friends"`
+		Groups  []*model.GroupData  `json:"groups"`
+		//Rooms      []*model.Room             `json:"rooms"`
+		//GroupUsers []*model.User             `json:"groupUsers"`
 	}{
 		user,
 		friends,
-		rooms,
+		//rooms,
 		groups,
-		groupUsers,
+		//groupUsers,
 	}))
 }
 
