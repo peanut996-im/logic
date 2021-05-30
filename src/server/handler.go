@@ -9,7 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"sync"
-	"time"
 )
 
 func (s *Server) Chat(c *gin.Context) {
@@ -235,13 +234,20 @@ func (s *Server) CreateGroup(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	err = model.CreateGroup(gR.GroupName, gR.GroupAdmin)
+	group, err := model.CreateGroup(gR.GroupName, gR.UID)
 	if err != nil {
 		logger.Error(api.MongoDBError, err)
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
+	// 返回数据
+	groupData, err := model.GetGroupDataByGroupID(group.GroupID)
+	if err != nil {
+		logger.Error(api.MongoDBError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	c.JSON(http.StatusOK, api.NewSuccessResponse(groupData))
 }
 
 func (s *Server) JoinGroup(c *gin.Context) {
