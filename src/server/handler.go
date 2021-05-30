@@ -130,99 +130,54 @@ func (s *Server) Load(c *gin.Context) {
 		return
 	}
 	var wg sync.WaitGroup
-	// 防止waitgroup.wait()最先执行
+	var lock sync.RWMutex
+	user, friends, groups := &model.User{}, []*model.FriendData{}, []*model.GroupData{}
+	errs := make([]error, 0)
+
 	wg.Add(1)
-	uCh, fCh, rCh := make(chan *model.User, 0), make(chan []*model.FriendData, 0), make(chan []*model.Room, 0)
-	//gCh, gUCh := make(chan []*model.GroupData, 0), make(chan []*model.User, 0)
-	gCh := make(chan []*model.GroupData, 0)
-	done := make(chan struct{})
-	defer close(uCh)
-	defer close(fCh)
-	defer close(rCh)
-	defer close(gCh)
-	//defer close(gUCh)
-	// get user info
-	go func() {
-		wg.Add(1)
+	go func(uid string) {
 		defer wg.Done()
-		user, err := model.GetUserByUID(lR.UID)
+		u, err := model.GetUserByUID(uid)
 		if nil != err {
-			uCh <- nil
+			lock.Lock()
+			errs = append(errs, err)
+			lock.Unlock()
 			return
 		}
-		uCh <- user
-	}()
+		user = u
+	}(lR.UID)
 
-	go func() {
+	wg.Add(1)
+	go func(uid string) {
 		// friends
-		wg.Add(1)
 		defer wg.Done()
-		friends, err := model.GetFriendDatasByUID(lR.UID)
+		fs, err := model.GetFriendDatasByUID(uid)
 		if err != nil {
-			fCh <- nil
+			lock.Lock()
+			errs = append(errs, err)
+			lock.Unlock()
 			return
 		}
-		fCh <- friends
-	}()
+		friends = fs
+	}(lR.UID)
 
-	go func() {
-		// rooms
-		wg.Add(1)
+	wg.Add(1)
+	go func(uid string) {
+		// group
 		defer wg.Done()
-		rooms, err := model.GetRoomsByUID(lR.UID)
+		gs, err := model.GetGroupDatasByUID(uid)
 		if err != nil {
-			rCh <- nil
+			lock.Lock()
+			errs = append(errs, err)
+			lock.Unlock()
 			return
 		}
-		rCh <- rooms
-	}()
+		groups = gs
+	}(lR.UID)
+	wg.Wait()
 
-	go func() {
-		// rooms
-		wg.Add(1)
-		defer wg.Done()
-		groups, err := model.GetGroupDatasByUID(lR.UID)
-		if err != nil {
-			gCh <- nil
-			//gUCh <- nil
-			return
-		}
-		gCh <- groups
-		//groupUsers, err := model.GetUsersByGroups(groups...)
-		//if nil != err {
-		//	gUCh <- nil
-		//	return
-		//}
-		//gUCh <- groupUsers
-		// Done 抵消一开始的add(1) 保证这里的执行完毕
-		wg.Done()
-	}()
-	go func() {
-		wg.Wait()
-		done <- struct{}{}
-	}()
-	user, friends, rooms, groups, groupUsers := &model.User{}, []*model.FriendData{}, []*model.Room{}, []*model.GroupData{}, []*model.User{}
-Loop:
-	for {
-		select {
-		case <-done:
-			break Loop
-		case u := <-uCh:
-			user = u
-		case f := <-fCh:
-			friends = f
-		case r := <-rCh:
-			rooms = r
-		case g := <-gCh:
-			groups = g
-		//case gU := <-gUCh:
-		//	groupUsers = gU
-		case <-time.After(1 * time.Second):
-			break Loop
-		}
-	}
-	if user == nil || friends == nil || rooms == nil || groups == nil || groupUsers == nil {
-		logger.Error("Logic.Load "+api.MongoDBError, err)
+	if len(errs) > 0 {
+		logger.Error("Logic.Load err: %v", errs[0])
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
@@ -231,14 +186,10 @@ Loop:
 		User    *model.User         `json:"user"`
 		Friends []*model.FriendData `json:"friends"`
 		Groups  []*model.GroupData  `json:"groups"`
-		//Rooms      []*model.Room             `json:"rooms"`
-		//GroupUsers []*model.User             `json:"groupUsers"`
 	}{
 		user,
 		friends,
-		//rooms,
 		groups,
-		//groupUsers,
 	}))
 }
 
