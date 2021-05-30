@@ -327,6 +327,40 @@ func (s *Server) LeaveGroup(c *gin.Context) {
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
 }
 
+func (s *Server) FindUser(c *gin.Context) {
+	fUR := &api.FindRequest{}
+	err := c.BindJSON(fUR)
+	if nil != err {
+		logger.Error(api.UnmarshalJsonError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	users, err := model.FindUsersByAccount(fUR.Account)
+	if nil != err {
+		logger.Error(api.UnmarshalJsonError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	c.JSON(http.StatusOK, api.NewSuccessResponse(users))
+}
+
+func (s *Server) FindGroup(c *gin.Context) {
+	fUR := &api.FindRequest{}
+	err := c.BindJSON(fUR)
+	if nil != err {
+		logger.Error(api.UnmarshalJsonError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	groups, err := model.FindGroupsByGroupName(fUR.GroupName)
+	if nil != err {
+		logger.Error(api.UnmarshalJsonError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	c.JSON(http.StatusOK, api.NewSuccessResponse(groups))
+}
+
 // refactor
 //func(s *Server)  EventHandler(event string) func(s *Server) (c *gin.Context){
 //	return func(s *Server) (c *gin.Context){
