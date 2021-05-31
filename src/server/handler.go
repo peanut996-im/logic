@@ -288,7 +288,12 @@ func (s *Server) InviteFriend(c *gin.Context) {
 
 func (s *Server) PullMessage(c *gin.Context) {
 	pR := &api.PullRequest{}
-	c.BindJSON(pR)
+	err := c.BindJSON(pR)
+	if err != nil {
+		logger.Error(api.UnmarshalJsonError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
 	messages, err := s.PullMessageByPage(pR.UID, pR.FriendID, pR.GroupID, pR.Current, pR.PageSize)
 	if err != nil {
 		logger.Error("PullMessage err: %v", err)
@@ -296,6 +301,23 @@ func (s *Server) PullMessage(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(messages))
+}
+
+func (s *Server) UpdateUser(c *gin.Context) {
+	uR := &api.UpdateRequest{}
+	err := c.BindJSON(uR)
+	if err != nil {
+		logger.Error(api.UnmarshalJsonError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	user, err := s.UpdateUserInfo(uR.UID, uR.Account, uR.Password, uR.Avatar)
+	if nil != err {
+		logger.Error("UpdateUserInfo err: %v", err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	c.JSON(http.StatusOK, api.NewSuccessResponse(user))
 }
 
 // refactor

@@ -10,6 +10,7 @@ import (
 	"framework/api"
 	"framework/api/model"
 	"framework/logger"
+	"framework/tool"
 )
 
 func (s *Server) PushChatMessage(message *model.ChatMessage) {
@@ -103,4 +104,29 @@ func (s *Server) PullMessageByPage(uid, friendID, groupID string, current, pageS
 		return messages, nil
 	}
 	return nil, api.ErrorCodeToError(api.ErrorHttpParamInvalid)
+}
+
+func (s *Server) UpdateUserInfo(uid string, account string, password string, avatar string) (*model.User, error) {
+	user, err := model.GetUserByUID(uid)
+	if nil != err {
+		return nil, err
+	}
+
+	if len(account) > 0 {
+		user.Account = account
+	} else if len(password) > 0 {
+		cipher := tool.EncryptBySha1(fmt.Sprintf("%v%v", password, s.cfg.AppKey))
+		user.Password = cipher
+	} else if len(avatar) > 0 {
+		user.Avatar = avatar
+	}
+	err = model.UpdateUser(user)
+	if nil != err {
+		return nil, err
+	}
+	u, err := model.GetUserByUID(user.UID)
+	if nil != err {
+		return nil, err
+	}
+	return u, nil
 }

@@ -47,6 +47,7 @@ func (s *Server) MountRoute() {
 		http.NewRoute(api.HTTPMethodPost, api.EventFindGroup, s.FindGroup),
 		http.NewRoute(api.HTTPMethodPost, api.EventInviteFriend, s.InviteFriend),
 		http.NewRoute(api.HTTPMethodPost, api.EventPullMessage, s.PullMessage),
+		http.NewRoute(api.HTTPMethodPost, api.EventUpdateUser, s.UpdateUser),
 	}
 	node := http.NewNodeRoute(path, routers...)
 	s.httpSrv.AddNodeRoute(node)
