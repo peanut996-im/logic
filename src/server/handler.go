@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"framework/api"
 	"framework/api/model"
 	"framework/db"
@@ -24,66 +23,6 @@ func (s *Server) Chat(c *gin.Context) {
 	go model.InsertChatMessage(msg)
 	go s.PushChatMessage(msg)
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
-}
-
-func (s *Server) PushChatMessage(message *model.ChatMessage) {
-	ch := make(chan struct{}, 0)
-	defer close(ch)
-	pCR := &api.PushChatRequest{
-		Message: message,
-	}
-	roomID := message.To
-	room, err := model.GetRoomByID(roomID)
-	if err != nil {
-		logger.Error("Logic.PushChat no such room: %v", roomID)
-		return
-	}
-	targets := []string{}
-	if room.OneToOne {
-		logger.Debug("Logic.Chat Push Friend Message")
-		//single
-		targets, err = model.GetFriendsByRoomID(room.RoomID)
-		if err != nil {
-			return
-		}
-
-	} else {
-		//group
-		targets, err = model.GetUserIDsByGroupID(message.To)
-		if err != nil {
-			logger.Error("Logic.PushChat Get Group Users err: %v", err)
-			return
-		}
-	}
-	for _, target := range targets {
-		pCR.Target = target
-		go s.SendToTarget(ch, target, pCR)
-		<-ch
-	}
-}
-
-func (s *Server) SendToTarget(ch chan struct{}, target string, request *api.PushChatRequest) {
-	logger.Debug("Logic.SendToTarget target: %v", target)
-	url, err := s.GetChatUrlFromScene(target)
-	if err != nil {
-		logger.Error("Logic.PushChat GetGateUrl err: %v", err)
-		return
-	}
-	go s.httpClient.GetGoReq().Post(url).Send(request).End()
-	ch <- struct{}{}
-}
-
-func (s *Server) GetGateAddrFromScene(scene string) (string, error) {
-	//TODO for cluster fix get from server
-	return fmt.Sprintf("%v:%v", s.cfg.Gate.Host, s.cfg.Gate.Port), nil
-}
-
-func (s *Server) GetChatUrlFromScene(scene string) (string, error) {
-	addr, err := s.GetGateAddrFromScene(scene)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("http://%v/%v", addr, api.EventChat), nil
 }
 
 func (s *Server) GetUserInfo(c *gin.Context) {
@@ -223,13 +162,13 @@ func (s *Server) DeleteFriend(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	err = model.DeleteFriend(fR.FriendA, fR.FriendB)
+	friend, err := model.DeleteFriend(fR.FriendA, fR.FriendB)
 	if err != nil {
 		logger.Error(api.MongoDBError, err)
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
+	c.JSON(http.StatusOK, api.NewSuccessResponse(friend))
 }
 
 func (s *Server) CreateGroup(c *gin.Context) {
@@ -287,13 +226,13 @@ func (s *Server) LeaveGroup(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	err = model.DeleteGroupUser(gR.GroupID, gR.UID)
+	gUser, err := model.DeleteGroupUser(gR.GroupID, gR.UID)
 	if err != nil {
 		logger.Error(api.MongoDBError, err)
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
+	c.JSON(http.StatusOK, api.NewSuccessResponse(gUser))
 }
 
 func (s *Server) FindUser(c *gin.Context) {
@@ -328,6 +267,23 @@ func (s *Server) FindGroup(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, api.NewSuccessResponse(groups))
+}
+
+func (s *Server) InviteFriend(c *gin.Context) {
+	iR := &api.InviteRequest{}
+	err := c.BindJSON(iR)
+	if err != nil {
+		logger.Error(api.UnmarshalJsonError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	err = s.InviteFriendsToGroup(iR.Friends, iR.GroupID)
+	if err != nil {
+		logger.Error("InviteFriendsToGroup err: %v", err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
 }
 
 // refactor
