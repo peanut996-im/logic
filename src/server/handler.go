@@ -286,6 +286,18 @@ func (s *Server) InviteFriend(c *gin.Context) {
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
 }
 
+func (s *Server) PullMessage(c *gin.Context) {
+	pR := &api.PullRequest{}
+	c.BindJSON(pR)
+	messages, err := s.PullMessageByPage(pR.UID, pR.FriendID, pR.GroupID, pR.Current, pR.PageSize)
+	if err != nil {
+		logger.Error("PullMessage err: %v", err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	c.JSON(http.StatusOK, api.NewSuccessResponse(messages))
+}
+
 // refactor
 //func(s *Server)  EventHandler(event string) func(s *Server) (c *gin.Context){
 //	return func(s *Server) (c *gin.Context){

@@ -82,3 +82,25 @@ func (s *Server) InviteFriendsToGroup(friends []string, groupID string) error {
 	// TODO 服务端主动推送客户端刷新
 	return nil
 }
+
+func (s *Server) PullMessageByPage(uid, friendID, groupID string, current, pageSize int64) ([]*model.ChatMessage, error) {
+	if len(friendID) > 0 {
+		friend, err := model.GetFriend(uid, friendID)
+		if err != nil {
+			return nil, err
+		}
+		messages, err := model.GetFriendMessageWithPage(friend, current, pageSize)
+		if err != nil {
+			return nil, err
+		}
+		return messages, nil
+	} else if len(groupID) > 0 {
+		group := &model.Group{GroupID: groupID}
+		messages, err := model.GetGroupMessageWithPage(group, current, pageSize)
+		if err != nil {
+			return nil, err
+		}
+		return messages, nil
+	}
+	return nil, api.ErrorCodeToError(api.ErrorHttpParamInvalid)
+}
