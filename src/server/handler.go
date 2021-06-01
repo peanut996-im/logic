@@ -18,7 +18,7 @@ func (s *Server) Chat(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	msg := model.ChatMessageFrom(cR.From, cR.To, cR.Content.(string), cR.Type)
+	msg := model.ChatMessageFrom(cR.From, cR.To, cR.Content, cR.Type, cR.Height, cR.Width, cR.Size, cR.FileName)
 	// TODO replace for MQ
 	go model.InsertChatMessage(msg)
 	go s.PushChatMessage(msg)
