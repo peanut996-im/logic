@@ -2,6 +2,7 @@ package server
 
 import (
 	"framework/api"
+	"framework/broker"
 	"framework/cfgargs"
 	"framework/logger"
 	"framework/net/http"
@@ -9,9 +10,10 @@ import (
 )
 
 type Server struct {
-	cfg        *cfgargs.SrvConfig
-	httpSrv    *http.Server
-	httpClient *http.Client
+	cfg         *cfgargs.SrvConfig
+	logicBroker broker.LogicBroker
+	httpSrv     *http.Server
+	httpClient  *http.Client
 }
 
 func NewServer() *Server {
@@ -20,14 +22,21 @@ func NewServer() *Server {
 
 func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 	gin.DefaultWriter = logger.MultiWriter(logger.DefLogger().GetLogWriters()...)
+	if cfg.Gate.Mode == "http" {
+		s.logicBroker = broker.NewLogicBrokerHttp()
+		s.logicBroker.Init(cfg)
+	}
+	s.logicBroker.Init(cfg)
 	s.cfg = cfg
 	s.httpClient = http.NewClient()
 	s.httpSrv = http.NewServer()
 	s.httpSrv.Init(cfg)
 	s.MountRoute()
+
 }
 func (s *Server) Run() {
-	go s.httpSrv.Run()
+	go s.logicBroker.Listen()
+	//go s.httpSrv.Run()
 }
 
 func (s *Server) MountRoute() {
@@ -50,5 +59,6 @@ func (s *Server) MountRoute() {
 		http.NewRoute(api.HTTPMethodPost, api.EventUpdateUser, s.UpdateUser),
 	}
 	node := http.NewNodeRoute(path, routers...)
+	s.logicBroker.(*broker.LogicBrokerHttp).AddNodeRoute(node)
 	s.httpSrv.AddNodeRoute(node)
 }

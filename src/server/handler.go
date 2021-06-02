@@ -7,9 +7,9 @@ import (
 	"framework/logger"
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"sync"
 )
 
+// Chat 推送信息
 func (s *Server) Chat(c *gin.Context) {
 	cR := &api.ChatRequest{}
 	err := c.BindJSON(cR)
@@ -25,6 +25,7 @@ func (s *Server) Chat(c *gin.Context) {
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
 }
 
+// GetUserInfo 获取用户信息
 func (s *Server) GetUserInfo(c *gin.Context) {
 	uR := &api.UserRequest{}
 	err := c.BindJSON(uR)
@@ -42,6 +43,7 @@ func (s *Server) GetUserInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, api.NewSuccessResponse(user))
 }
 
+// Auth 用户鉴权 鉴权成功后推送初始化信息
 func (s *Server) Auth(c *gin.Context) {
 	aR := &api.AuthRequest{}
 	err := c.BindJSON(aR)
@@ -51,14 +53,25 @@ func (s *Server) Auth(c *gin.Context) {
 		return
 	}
 	user, err := api.CheckToken(aR.Token)
-	if db.IsNotExistError(err) {
-		// token expired
-		c.AbortWithStatusJSON(http.StatusOK, api.TokenInvaildResp)
+	if err != nil {
+		if db.IsNotExistError(err) {
+			// token expired
+			c.AbortWithStatusJSON(http.StatusOK, api.TokenInvaildResp)
+			return
+		}
+		logger.Error(api.MongoDBError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
+	defer func(uid string) {
+		// Auth success then push load data
+		logger.Debug("Logic.Auth defer. uid: %v", uid)
+		go s.PushLoadData(uid)
+	}(user.UID)
 	c.JSON(http.StatusOK, api.NewSuccessResponse(user))
 }
 
+// Load 推送初始化信息
 func (s *Server) Load(c *gin.Context) {
 	lR := &api.LoadRequest{}
 	err := c.BindJSON(lR)
@@ -67,70 +80,11 @@ func (s *Server) Load(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	var wg sync.WaitGroup
-	var lock sync.RWMutex
-	user, friends, groups := &model.User{}, []*model.FriendData{}, []*model.GroupData{}
-	errs := make([]error, 0)
-
-	wg.Add(1)
-	go func(uid string) {
-		defer wg.Done()
-		u, err := model.GetUserByUID(uid)
-		if nil != err {
-			lock.Lock()
-			errs = append(errs, err)
-			lock.Unlock()
-			return
-		}
-		user = u
-	}(lR.UID)
-
-	wg.Add(1)
-	go func(uid string) {
-		// friends
-		defer wg.Done()
-		fs, err := model.GetFriendDatasByUID(uid)
-		if err != nil {
-			lock.Lock()
-			errs = append(errs, err)
-			lock.Unlock()
-			return
-		}
-		friends = fs
-	}(lR.UID)
-
-	wg.Add(1)
-	go func(uid string) {
-		// group
-		defer wg.Done()
-		gs, err := model.GetGroupDatasByUID(uid)
-		if err != nil {
-			lock.Lock()
-			errs = append(errs, err)
-			lock.Unlock()
-			return
-		}
-		groups = gs
-	}(lR.UID)
-	wg.Wait()
-
-	if len(errs) > 0 {
-		logger.Error("Logic.Load err: %v", errs[0])
-		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-		return
-	}
-
-	c.JSON(http.StatusOK, api.NewSuccessResponse(struct {
-		User    *model.User         `json:"user"`
-		Friends []*model.FriendData `json:"friends"`
-		Groups  []*model.GroupData  `json:"groups"`
-	}{
-		user,
-		friends,
-		groups,
-	}))
+	go s.PushLoadData(lR.UID)
+	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
 }
 
+// AddFriend 添加好友
 func (s *Server) AddFriend(c *gin.Context) {
 	fR := &api.FriendRequest{}
 	err := c.BindJSON(fR)
@@ -139,21 +93,20 @@ func (s *Server) AddFriend(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	err = model.AddNewFriend(fR.FriendA, fR.FriendB)
+	friendData, err := s.AddThenGetFriendData(fR.FriendA, fR.FriendB)
 	if err != nil {
-		logger.Error(api.MongoDBError, err)
+		logger.Error("Logic.AddFriend failed. err: %v", err)
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	friendData, err := model.GetFriendDataByIDs(fR.FriendA, fR.FriendB)
-	if err != nil {
-		logger.Error(api.MongoDBError, err)
-		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-		return
-	}
+	defer func() {
+		go s.PushLoadData(fR.FriendA)
+		go s.PushLoadData(fR.FriendB)
+	}()
 	c.JSON(http.StatusOK, api.NewSuccessResponse(friendData))
 }
 
+// DeleteFriend 删除好友
 func (s *Server) DeleteFriend(c *gin.Context) {
 	fR := &api.FriendRequest{}
 	err := c.BindJSON(fR)
@@ -162,15 +115,20 @@ func (s *Server) DeleteFriend(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	friend, err := model.DeleteFriend(fR.FriendA, fR.FriendB)
+	friend, err := s.DeleteThenGetFriend(fR.FriendA, fR.FriendB)
 	if err != nil {
 		logger.Error(api.MongoDBError, err)
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
+	defer func() {
+		go s.PushLoadData(fR.FriendA)
+		go s.PushLoadData(fR.FriendB)
+	}()
 	c.JSON(http.StatusOK, api.NewSuccessResponse(friend))
 }
 
+// CreateGroup 创建群组
 func (s *Server) CreateGroup(c *gin.Context) {
 	gR := &api.GroupRequest{}
 	err := c.BindJSON(gR)
@@ -179,14 +137,8 @@ func (s *Server) CreateGroup(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	group, err := model.CreateGroup(gR.GroupName, gR.UID)
-	if err != nil {
-		logger.Error(api.MongoDBError, err)
-		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-		return
-	}
-	// 返回数据
-	groupData, err := model.GetGroupDataByGroupID(group.GroupID)
+	logger.Debug("Logic.CreateGroup group name: %v uid: %v ", gR.GroupName, gR.UID)
+	groupData, err := s.CreateAndGetGroupData(gR.GroupName, gR.UID)
 	if err != nil {
 		logger.Error(api.MongoDBError, err)
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
@@ -195,6 +147,7 @@ func (s *Server) CreateGroup(c *gin.Context) {
 	c.JSON(http.StatusOK, api.NewSuccessResponse(groupData))
 }
 
+// JoinGroup 加入群组并广播
 func (s *Server) JoinGroup(c *gin.Context) {
 	gR := &api.GroupRequest{}
 	err := c.BindJSON(gR)
@@ -203,21 +156,21 @@ func (s *Server) JoinGroup(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	err = model.CreateGroupUser(gR.GroupID, gR.UID)
+	groupData, err := s.JoinAndGetGroupData(gR.UID, gR.GroupID)
 	if err != nil {
-		logger.Error(api.MongoDBError, err)
+		logger.Error(api.UnmarshalJsonError, err)
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	groupData, err := model.GetGroupDataByGroupID(gR.GroupID)
-	if err != nil {
-		logger.Error(api.MongoDBError, err)
-		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-		return
-	}
+	defer func() {
+		for _, member := range groupData.Members {
+			go s.PushLoadData(member.UID)
+		}
+	}()
 	c.JSON(http.StatusOK, api.NewSuccessResponse(groupData))
 }
 
+// LeaveGroup 离开群组并广播
 func (s *Server) LeaveGroup(c *gin.Context) {
 	gR := &api.GroupRequest{}
 	err := c.BindJSON(gR)
@@ -226,15 +179,25 @@ func (s *Server) LeaveGroup(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
-	gUser, err := model.DeleteGroupUser(gR.GroupID, gR.UID)
+	gUser, err := s.LeaveAndGetGroupUser(gR.UID, gR.GroupID)
 	if err != nil {
-		logger.Error(api.MongoDBError, err)
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
+	defer func(groupID string) {
+		uids, err := model.GetUserIDsByGroupID(groupID)
+		if err != nil {
+			logger.Error("Logic.PushLoadData After LeaveGroup Failed. err: %v", err)
+			return
+		}
+		for _, uid := range uids {
+			go s.PushLoadData(uid)
+		}
+	}(gR.GroupID)
 	c.JSON(http.StatusOK, api.NewSuccessResponse(gUser))
 }
 
+// FindUser 模糊搜索用户
 func (s *Server) FindUser(c *gin.Context) {
 	fUR := &api.FindRequest{}
 	err := c.BindJSON(fUR)
@@ -252,6 +215,7 @@ func (s *Server) FindUser(c *gin.Context) {
 	c.JSON(http.StatusOK, api.NewSuccessResponse(users))
 }
 
+// FindGroup 模糊搜索群组
 func (s *Server) FindGroup(c *gin.Context) {
 	fUR := &api.FindRequest{}
 	err := c.BindJSON(fUR)
@@ -269,6 +233,7 @@ func (s *Server) FindGroup(c *gin.Context) {
 	c.JSON(http.StatusOK, api.NewSuccessResponse(groups))
 }
 
+// InviteFriend 邀请好友进群
 func (s *Server) InviteFriend(c *gin.Context) {
 	iR := &api.InviteRequest{}
 	err := c.BindJSON(iR)
@@ -283,9 +248,20 @@ func (s *Server) InviteFriend(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
+	defer func(groupID string) {
+		uids, err := model.GetUserIDsByGroupID(groupID)
+		if err != nil {
+			logger.Error("Logic.PushLoadData After LeaveGroup Failed. err: %v", err)
+			return
+		}
+		for _, uid := range uids {
+			go s.PushLoadData(uid)
+		}
+	}(iR.GroupID)
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
 }
 
+// PullMessage 分页加载信息
 func (s *Server) PullMessage(c *gin.Context) {
 	pR := &api.PullRequest{}
 	err := c.BindJSON(pR)
@@ -303,6 +279,7 @@ func (s *Server) PullMessage(c *gin.Context) {
 	c.JSON(http.StatusOK, api.NewSuccessResponse(messages))
 }
 
+// UpdateUser 更新用户信息
 func (s *Server) UpdateUser(c *gin.Context) {
 	uR := &api.UpdateRequest{}
 	err := c.BindJSON(uR)
@@ -317,104 +294,14 @@ func (s *Server) UpdateUser(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
 		return
 	}
+	defer func(uid string) {
+		targets, err := model.GetAssociatedUIDsByUID(uid)
+		if err != nil {
+			return
+		}
+		for _, target := range targets {
+			go s.PushLoadData(target)
+		}
+	}(user.UID)
 	c.JSON(http.StatusOK, api.NewSuccessResponse(user))
 }
-
-// refactor
-//func(s *Server)  EventHandler(event string) func(s *Server) (c *gin.Context){
-//	return func(s *Server) (c *gin.Context){
-//		var (
-//			data interface{}
-//			err error
-//		)
-//		switch event {
-//		case api.EventAuth:
-//			data = &api.AuthRequest{}
-//		case api.EventLoad:
-//			data = &api.LoadRequest{}
-//		case api.EventAddFriend,api.EventDeleteFriend:
-//			data = &api.FriendRequest{}
-//		case api.EventCreateGroup, api.EventJoinGroup,api.EventLeaveGroup:
-//			data = &api.GroupRequest{}
-//		default:
-//			c.JSON(http.StatusNotFound,nil)
-//			return
-//		}
-//		err = c.BindJSON(data)
-//		if err != nil {
-//			logger.Error(fmt.Sprintf("Logic.Handler %v ",event)+api.UnmarshalJsonError,err)
-//			c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//			return
-//		}
-//		switch event {
-//		case api.EventAuth:
-//			user, err := api.CheckToken(data.(*api.AuthRequest).Token)
-//			if db.IsNotExistError(err) {
-//				// token expired
-//				c.JSON(http.StatusOK, api.TokenInvaildResp)
-//				return
-//			}
-//			c.JSON(http.StatusOK, api.NewSuccessResponse(user))
-//			return
-//		case api.EventLoad:
-//			user, err := model.GetUserByUID(data.(*api.LoadRequest).UID)
-//			if nil != err {
-//				if db.IsNoDocumentError(err) {
-//					c.JSON(http.StatusOK, api.ResourceNotFoundResp)
-//					return
-//				}
-//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//				return
-//			}
-//			c.JSON(http.StatusOK, api.NewSuccessResponse(struct {
-//				User    *model.User     `json:"userInfo"`
-//				Friends []*model.Friend `json:"friendList"`
-//				Rooms   []*model.Room   `json:"roomList"`
-//			}{
-//				user,
-//				nil,
-//				nil,
-//			}))
-//			return
-//		case api.EventAddFriend:
-//			err = model.AddNewFriend(data.(*api.FriendRequest).FriendA, data.(*api.FriendRequest).FriendB)
-//			if err != nil {
-//				logger.Error(api.MongoDBError,err)
-//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//				return
-//			}
-//		case api.EventDeleteFriend:
-//			err = model.DeleteFriend(data.(*api.FriendRequest).FriendA, data.(*api.FriendRequest).FriendB)
-//			if err != nil {
-//				logger.Error(api.MongoDBError,err)
-//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//				return
-//			}
-//		case api.EventCreateGroup:
-//			err = model.CreateGroup(data.(*api.GroupRequest).GroupName, data.(*api.GroupRequest).GroupID)
-//			if err != nil {
-//				logger.Error(api.MongoDBError,err)
-//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//				return
-//			}
-//		case api.EventJoinGroup:
-//			err = model.CreateGroupUser(data.(*api.GroupRequest).GroupID,data.(*api.GroupRequest).UID)
-//			if err != nil {
-//				logger.Error(api.MongoDBError,err)
-//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//				return
-//			}
-//		case api.EventLeaveGroup:
-//			err = model.DeleteGroupUser(data.(*api.GroupRequest).GroupID,data.(*api.GroupRequest).UID)
-//			if err != nil {
-//				logger.Error(api.MongoDBError,err)
-//				c.JSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-//				return
-//			}
-//		default:
-//			c.JSON(http.StatusNotFound,nil)
-//			return
-//		}
-//		c.JSON(http.StatusOK,api.NewSuccessResponse(nil))
-//	}
-//}
