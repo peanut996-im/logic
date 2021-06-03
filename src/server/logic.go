@@ -113,6 +113,13 @@ func (s *Server) PushChatMessage(message *model.ChatMessage) {
 	s.InvokeTarget(api.EventChat, message, targets...)
 }
 
+func (s *Server) ConsumeMessage(message *model.ChatMessage) {
+	err := model.InsertChatMessage(message)
+	if err != nil {
+		logger.Error("Logic.ConsumeEvent err: %v", err)
+	}
+}
+
 func (s *Server) GetGateAddrFromScene(scene string) (string, error) {
 	//TODO for cluster fix get from server
 	return fmt.Sprintf("%v:%v", s.cfg.Gate.Host, s.cfg.Gate.Port), nil
@@ -127,6 +134,7 @@ func (s *Server) GetChatUrlFromScene(scene string) (string, error) {
 }
 
 func (s *Server) InvokeTarget(event string, data interface{}, targets ...string) {
+	// TODO find target on different gate nodes.
 	logger.Info("Logic.InvokeTarget: event:%v, target: %v, data:%v", event, targets, data)
 	iR := &api.InvokeRequest{
 		Event:   event,

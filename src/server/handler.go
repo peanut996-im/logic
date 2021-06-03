@@ -19,8 +19,7 @@ func (s *Server) Chat(c *gin.Context) {
 		return
 	}
 	msg := model.ChatMessageFrom(cR.From, cR.To, cR.Content, cR.Type, cR.Height, cR.Width, cR.Size, cR.FileName)
-	// TODO replace for MQ
-	go model.InsertChatMessage(msg)
+	s.Produce(msg)
 	go s.PushChatMessage(msg)
 	c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
 }
