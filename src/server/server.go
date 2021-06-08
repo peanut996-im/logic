@@ -1,12 +1,16 @@
 package server
 
 import (
+	"encoding/json"
+	"fmt"
 	"framework/api"
 	"framework/api/model"
 	"framework/broker"
 	"framework/cfgargs"
 	"framework/logger"
 	"framework/net/http"
+
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,11 +20,15 @@ type Server struct {
 	httpSrv      *http.Server
 	httpClient   *http.Client
 	messageQueue chan *model.ChatMessage
+	producer     *kafka.Producer
+	consumer     *kafka.Consumer
+	deliveryChan chan kafka.Event
 }
 
 func NewServer() *Server {
 	return &Server{
 		messageQueue: make(chan *model.ChatMessage, 5000),
+		deliveryChan: make(chan kafka.Event, 5000),
 	}
 }
 
@@ -36,6 +44,15 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 	s.httpSrv = http.NewServer()
 	s.httpSrv.Init(cfg)
 	s.MountRoute()
+
+	// kafka
+
+	c, _ := kafka.NewConsumer(&kafka.ConfigMap{
+		"bootstrap.servers": fmt.Sprintf("%v:%v", cfg.Kafka.Host, cfg.Kafka.Port),
+		"group.id":          cfg.Kafka.Group,
+		"auto.offset.reset": "earliest",
+	})
+	s.consumer = c
 
 }
 
@@ -74,17 +91,43 @@ func (s *Server) MountRoute() {
 
 func (s *Server) Produce(message *model.ChatMessage) {
 	// MQ　producer
-	// TODO Replace By kafka
+
+	j, _ := json.Marshal(message)
+
+	s.producer.Produce(&kafka.Message{
+		TopicPartition: kafka.TopicPartition{Topic: &s.cfg.Kafka.Topic, Partition: kafka.PartitionAny},
+		Value:          j,
+	}, s.deliveryChan)
+
+	e := <-s.deliveryChan
+	m := e.(*kafka.Message)
+
+	if m.TopicPartition.Error != nil {
+		logger.Info("Delivery failed: %v\n", m.TopicPartition.Error)
+	} else {
+		logger.Info("Delivered message to topic %s [%d] at offset %v\n",
+			*m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
+	}
+
 	logger.Info("Logic.Produce: produce new message: [%+v]", *message)
-	s.messageQueue <- message
+	// s.messageQueue <- message
 }
 
 func (s *Server) Consume(consumerFunc func(message *model.ChatMessage)) {
 	// TODO Replace By kafka
-	for message := range s.messageQueue {
-		// MQ consumer
-		logger.Info("Logic.Consume: consume message: [%+v]", *message)
-		//s.PushChatMessage(message)
-		consumerFunc(message)
+	go s.loopKafka(consumerFunc)
+}
+
+func (s *Server) loopKafka(consumerFunc func(message *model.ChatMessage)) {
+	s.consumer.SubscribeTopics([]string{s.cfg.Kafka.Topic}, nil)
+	for {
+		msg, err := s.consumer.ReadMessage(-1)
+		if nil == err {
+			chatMsg := &model.ChatMessage{}
+			json.Unmarshal(msg.Value, &chatMsg)
+			consumerFunc(chatMsg)
+		} else {
+			logger.Error("Kafka Consumer error: %v (%v)", err, msg)
+		}
 	}
 }
