@@ -74,11 +74,13 @@ func (s *Server) MountRoute() {
 
 func (s *Server) Produce(message *model.ChatMessage) {
 	// MQ　producer
+	// TODO Replace By kafka
 	logger.Info("Logic.Produce: produce new message: [%+v]", *message)
 	s.messageQueue <- message
 }
 
 func (s *Server) Consume(consumerFunc func(message *model.ChatMessage)) {
+	// TODO Replace By kafka
 	for message := range s.messageQueue {
 		// MQ consumer
 		logger.Info("Logic.Consume: consume message: [%+v]", *message)
