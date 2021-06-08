@@ -65,6 +65,7 @@ func (s *Server) MountRoute() {
 		http.NewRoute(api.HTTPMethodPost, api.EventInviteFriend, s.InviteFriend),
 		http.NewRoute(api.HTTPMethodPost, api.EventPullMessage, s.PullMessage),
 		http.NewRoute(api.HTTPMethodPost, api.EventUpdateUser, s.UpdateUser),
+		http.NewRoute(api.HTTPMethodPost, api.EventUpdateGroup, s.UpdateGroup),
 	}
 	node := http.NewNodeRoute(path, routers...)
 	s.logicBroker.(*broker.LogicBrokerHttp).AddNodeRoute(node)

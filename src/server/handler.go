@@ -281,7 +281,7 @@ func (s *Server) PullMessage(c *gin.Context) {
 
 // UpdateUser 更新用户信息
 func (s *Server) UpdateUser(c *gin.Context) {
-	uR := &api.UpdateRequest{}
+	uR := &api.UpdateUserRequest{}
 	err := c.BindJSON(uR)
 	if err != nil {
 		logger.Error(api.UnmarshalJsonError, err)
@@ -304,4 +304,33 @@ func (s *Server) UpdateUser(c *gin.Context) {
 		}
 	}(user.UID)
 	c.JSON(http.StatusOK, api.NewSuccessResponse(user))
+}
+
+// UpdateGroup 更新群组信息
+func (s *Server) UpdateGroup(c *gin.Context) {
+	uR := &api.UpdateGroupRequest{}
+	err := c.BindJSON(uR)
+	if err != nil {
+		logger.Error(api.UnmarshalJsonError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	logger.Debug("Logic.UpdateGroup Request: [%v]", *uR)
+	group, err := s.UpdateGroupInfo(uR.GroupID, uR.GroupName, uR.GroupNotice)
+	if nil != err {
+		logger.Error("UpdateGroupInfo err: %v", err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	defer func(group *model.Group) {
+		targets, err := model.GetUsersByGroup(group)
+		if err != nil {
+			return
+		}
+		for _, target := range targets {
+			go s.PushLoadData(target.UID)
+		}
+	}(group)
+	c.JSON(http.StatusOK, api.NewSuccessResponse(group))
+
 }

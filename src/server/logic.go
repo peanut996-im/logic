@@ -182,21 +182,37 @@ func (s *Server) UpdateUserInfo(uid string, account string, password string, ava
 
 	if len(account) > 0 {
 		user.Account = account
-	} else if len(password) > 0 {
+	}
+	if len(password) > 0 {
 		cipher := tool.EncryptBySha1(fmt.Sprintf("%v%v", password, s.cfg.AppKey))
 		user.Password = cipher
-	} else if len(avatar) > 0 {
+	}
+	if len(avatar) > 0 {
 		user.Avatar = avatar
 	}
 	err = model.UpdateUser(user)
 	if nil != err {
 		return nil, err
 	}
-	u, err := model.GetUserByUID(user.UID)
+	return user, nil
+}
+
+func (s *Server) UpdateGroupInfo(id string, groupName string, groupNotice string) (*model.Group, error) {
+	group, err := model.GetGroupByGroupID(id)
 	if nil != err {
 		return nil, err
 	}
-	return u, nil
+	if len(groupNotice) > 0 {
+		group.Notice = groupNotice
+	}
+	if len(groupName) > 0 {
+		group.GroupName = groupName
+	}
+	err = model.UpdateGroup(group)
+	if nil != err {
+		return nil, err
+	}
+	return group, nil
 }
 
 func (s *Server) AddThenGetFriendData(uid, friendID string) (*model.FriendData, error) {
