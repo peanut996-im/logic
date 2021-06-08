@@ -81,7 +81,7 @@ func (s *Server) GetLoadData(uid string) (interface{}, error) {
 func (s *Server) PushLoadData(uid string) {
 	start := time.Now()
 	loadData, err := s.GetLoadData(uid)
-	logger.Debug("Logic.PushLoadData /load %v", time.Since(start))
+	logger.Info("Logic.PushLoadData /load %v", time.Since(start))
 	if err != nil {
 		logger.Error("Logic.PushLoadData Error: %v", err)
 		return
