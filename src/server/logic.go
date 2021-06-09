@@ -124,21 +124,13 @@ func (s *Server) ConsumeMessage(message *model.ChatMessage) {
 }
 
 func (s *Server) InvokeTarget(event string, data interface{}, targets ...string) {
-	// TODO find target on different gate nodes.
 	logger.Info("Logic.InvokeTarget: event:%v, target: %v", event, targets)
-	iR := &api.InvokeRequest{
-		Event:   event,
-		Targets: targets,
-		Data:    data,
-	}
 	//go s.logicBroker.Invoke(iR)
-	go func(data interface{}) {
-		_, err := s.logicBroker.Invoke(iR)
-		if err != nil {
-			logger.Error("Logic.InvokeTarget Error: err: %v event:%v, target: %v, data:%v", err, event, targets, data)
-			return
+	go func() {
+		for _, target := range targets {
+			go s.logicBroker.InvokeTarget(target, event, data)
 		}
-	}(iR)
+	}()
 }
 
 func (s *Server) InviteFriendsToGroup(friends []string, groupID string) error {
